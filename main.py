@@ -50,33 +50,40 @@ def score_message_with_kedy(prompt):
         print("API Hatası:", e)
         return None
 
-# --- 4. MESAJ DİNLEME VE TRİYAJ ANALİZİ ---
+# --- 4. MESAJ DİNLEME VE MUTLAK TRİYAJ ANALİZİ ---
 @bot.event
 async def on_message(message):
     if message.author.bot or message.content.startswith('!'):
         await bot.process_commands(message)
         return
 
-    # Hafızadaki mevcut acil durum özetlerini bağlam olarak topla
-    recent_summaries = "\n".join([f"- {v['summary']} (Puan: {v['score']})" for v in list(message_db.values())[-5:]])
-    context_text = f"Sistemdeki Son İhbarlar:\n{recent_summaries}\n\n" if recent_summaries else "Henüz aktif ihbar yok.\n\n"
+    # KATI VE ÇEŞİTLİ PUANLAMA PROMPTU
+    ai_prompt = f"""Sen 112 Acil Çağrı Merkezi'nin en katı ve hassas triyaj yapay zekasısın.
+Görevin, gelen ihbarı DİĞER İHBARLARDAN BAĞIMSIZ olarak, SADECE kendi metin içeriğindeki hayati tehlikeye göre 0 ile 100.000 arasında MUTLAK BİR PUANLA değerlendirmektir.
 
-    # GÜÇLENDİRİLMİŞ 112 TRİYAJ PROMPTU (SIKI PUANLAMA KURALLARI)
-    ai_prompt = f"""Sen 112 Acil Çağrı Merkezi için çalışan son derece strict (sıkı) bir yapay zekâ triyaj uzmanısın.
-Görevin, gelen ihbarın HAYATİ ACİLİYETİNİ 0 ile 100.000 arasında puanlamaktır.
+KATI PUANLAMA SKALASI VE KURALLAR:
+1. HAYATİ KRİZ (90.000 - 100.000 Puan):
+   - Solunum durması, bilincin tamamen kapalı olması, kalbin durması, ağır trafolu/araçlı kaza, yangında mahsur kalma, silahlı vurulma.
+   - ÖRNEK PUANLAR: 91.250, 94.800, 98.500, 99.900 gibi vakaya göre özgün ve hassas sayılar ver.
 
-STRICT PUANLAMA KURALLARI:
-1. GERÇEK ACİL DURUMLAR (80.000 - 100.000 Puan): Kalp krizi, ağır yaralanma, bilinç kaybı, yangın, silahlı çatışma, trafik kazası, nefes darlığı.
-2. ORTA DERECELİ ACİL (30.000 - 79.999 Puan): Hafif yaralanma, küçük ev kazaları, panik atağı, maddi hasarlı kaza.
-3. ASILSIZ / BOŞ / EŞYA / TROLL İHBARLAR (0 - 5.000 Puan): Tost makinesi, bilgisayar, bozuk eşya, annemin kızması, sohbet etme, troller veya 112 hattını meşgul eden saçma durumlar. BUNLARA KESİNLİKLE YÜKSEK PUAN VERME!
+2. ACİL TIBBİ MÜDAHALE (50.000 - 89.999 Puan):
+   - Kırık şüphesi, açık yara, geçmeyen şiddetli göğüs ağrısı, ciddi düşme.
+   - ÖRNEK PUANLAR: 52.300, 68.450, 77.100, 84.900 gibi özgün sayılar ver.
 
-Mevcut İhbar Bağlamı:
-{context_text}
+3. DÜŞÜK ACİLİYE T / DESTEK (10.000 - 49.999 Puan):
+   - Hafif sıyrık, panik hali, yaşlı bakımı, kapıda kalma.
+   - ÖRNEK PUANLAR: 12.400, 25.800, 39.150.
 
-Gelen Yeni İhbar: "{message.content}"
+4. SIFIR TOLERANS / EŞYA / TROLL / SOHBET (0 - 9.999 Puan):
+   - Tost makinesi, beyaz eşya, kedi/köpek sorunu, sohbet etme, saçmalama, "annem kızar", troller.
+   - BUNLARA KESİNLİKLE 10.000 ÜZERİ PUAN VERME! (Örn: 50, 350, 1.200, 4.500).
 
-Lütfen SADECE aşağıdaki JSON formatında yanıt ver (ekstra hiçbir metin/açıklama ekleme):
-{{"puan": 100, "ozet": "Kısa vaka özeti (maksimum 5 kelime)"}}
+ÖNEMLİ: Sonu hep '00' veya '000' biten düz sayılar verme! 87.340, 93.120, 1.450 gibi vakaya özel küsüratlı/çeşitli puanlar üret.
+
+Gelen İhbar Metni: "{message.content}"
+
+Lütfen SADECE aşağıdaki JSON formatında yanıt ver:
+{{"puan": HASSAS_SAYI, "ozet": "Kısa vaka özeti (maksimum 5 kelime)"}}
 """
 
     loop = asyncio.get_event_loop()
