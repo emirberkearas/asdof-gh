@@ -6,6 +6,10 @@ import json
 import asyncio
 import threading
 from flask import Flask
+import matplotlib
+matplotlib.use('Agg') # Sunucu ortamında ekran olmadan grafik çizmek için
+import matplotlib.pyplot as plt
+import io
 
 # --- 1. RENDER 7/24 UYANIK TUTMA (FLASK) ---
 app = Flask(__name__)
@@ -57,7 +61,6 @@ async def on_message(message):
         await bot.process_commands(message)
         return
 
-    # KEDY'E 0-100 ARASI PUAN VERDİRİP KODDA 100.000'E TAMAMLIYORUZ
     ai_prompt = f"""Sen 112 Acil Çağrı Merkezi triyaj uzmanısın.
 Görevin, ihbarın HAYATİ TEHLİKESİNİ ve ACİLİYETİNİ 0.0 ile 100.0 arasında bir YÜZDE PUANI ile değerlendirmektir.
 
@@ -82,7 +85,6 @@ Lütfen SADECE aşağıdaki JSON formatında yanıt ver:
         data = json.loads(ai_content)
         
         raw_puan = float(data.get("puan", 0))
-        # Otomatik Ölçekleme: 0-100 arası gelen puanı 1000 ile çarparak 100.000 skalasına çeviriyoruz.
         final_puan = int(raw_puan * 1000)
         
         ozet = data.get("ozet", "Özet çıkarılamadı")
@@ -118,6 +120,69 @@ async def kod(ctx):
         embed.add_field(name="🚨 İhbar", value=desc, inline=False)
         
     await ctx.send(embed=embed)
+
+# GRAFİK OLUŞTURMA KOMUTU (!chart) - HATA KORUMALI
+@bot.command(name="chart")
+async def chart(ctx):
+    if not message_db:
+        await ctx.send("📭 Grafik oluşturmak için henüz kayıtlı bir ihbar yok.")
+        return
+
+    msg = await ctx.send("⏳ **Grafik oluşturuluyor, lütfen bekleyin...**")
+
+    try:
+        sorted_items = sorted(message_db.items(), key=lambda x: x[1]['score'], reverse=True)[:10]
+        sorted_items.reverse()
+
+        labels = []
+        scores = []
+        colors = []
+
+        for msg_id, data in sorted_items:
+            label = f"[{data['time']} | {data['author']}] {data['summary']}"
+            labels.append(label)
+            scores.append(data['score'])
+            
+            if data['score'] >= 80000:
+                colors.append('#e74c3c')
+            elif data['score'] >= 40000:
+                colors.append('#f39c12')
+            else:
+                colors.append('#2ecc71')
+
+        plt.close('all') # Önceki grafikleri temizle
+        fig, ax = plt.subplots(figsize=(10, max(4, len(labels) * 0.8)), facecolor='#2f3136')
+        ax.set_facecolor('#36393f')
+
+        bars = ax.barh(labels, scores, color=colors, height=0.5)
+
+        for bar in bars:
+            width = bar.get_width()
+            ax.text(width + 1000, bar.get_y() + bar.get_height()/2, f'{int(width):,} Puan',
+                    va='center', ha='left', color='white', fontweight='bold', fontsize=9)
+
+        ax.set_xlim(0, 120000)
+        ax.tick_params(colors='white', labelsize=9)
+        ax.spines['bottom'].set_color('white')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_color('white')
+        
+        plt.title("🚑 112 ACİL ÇAĞRI TRİYAJ ACİLİYET GRAFİĞİ", color='white', fontsize=13, fontweight='bold', pad=15)
+        plt.xlabel("Aciliyet Puanı (100.000 Üzerinden)", color='white', fontsize=10, labelpad=10)
+        plt.tight_layout()
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=100, bbox_inches='tight', facecolor=fig.get_facecolor())
+        buf.seek(0)
+        plt.close(fig)
+
+        file = discord.File(buf, filename="112_triyaj_grafigi.png")
+        await msg.delete()
+        await ctx.send(file=file)
+
+    except Exception as e:
+        await msg.edit(content=f"❌ **Grafik oluşturulurken bir hata oluştu:** `{str(e)}`")
 
 @bot.command(name="duzenle")
 @commands.has_permissions(manage_messages=True)
@@ -167,7 +232,6 @@ async def on_command_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("🚫 Bu moderasyon komutunu kullanmak için `Mesajları Yönet` yetkisi gereklidir.")
 
-# --- 6. UYGULAMAYI BAŞLATMA ---
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     bot.run(DISCORD_TOKEN)
