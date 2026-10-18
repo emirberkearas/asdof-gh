@@ -50,40 +50,27 @@ def score_message_with_kedy(prompt):
         print("API Hatası:", e)
         return None
 
-# --- 4. MESAJ DİNLEME VE MUTLAK TRİYAJ ANALİZİ ---
+# --- 4. MESAJ DİNLEME VE TRİYAJ ANALİZİ ---
 @bot.event
 async def on_message(message):
     if message.author.bot or message.content.startswith('!'):
         await bot.process_commands(message)
         return
 
-    # KATI VE ÇEŞİTLİ PUANLAMA PROMPTU
-    ai_prompt = f"""Sen 112 Acil Çağrı Merkezi'nin en katı ve hassas triyaj yapay zekasısın.
-Görevin, gelen ihbarı DİĞER İHBARLARDAN BAĞIMSIZ olarak, SADECE kendi metin içeriğindeki hayati tehlikeye göre 0 ile 100.000 arasında MUTLAK BİR PUANLA değerlendirmektir.
+    # KEDY'E 0-100 ARASI PUAN VERDİRİP KODDA 100.000'E TAMAMLIYORUZ
+    ai_prompt = f"""Sen 112 Acil Çağrı Merkezi triyaj uzmanısın.
+Görevin, ihbarın HAYATİ TEHLİKESİNİ ve ACİLİYETİNİ 0.0 ile 100.0 arasında bir YÜZDE PUANI ile değerlendirmektir.
 
-KATI PUANLAMA SKALASI VE KURALLAR:
-1. HAYATİ KRİZ (90.000 - 100.000 Puan):
-   - Solunum durması, bilincin tamamen kapalı olması, kalbin durması, ağır trafolu/araçlı kaza, yangında mahsur kalma, silahlı vurulma.
-   - ÖRNEK PUANLAR: 91.250, 94.800, 98.500, 99.900 gibi vakaya göre özgün ve hassas sayılar ver.
+ACİLİYE SKALASI (0 - 100):
+- 90.0 - 100.0: Bilinç kaybı, nefes alamama, kalp krizi, ağır yaralanma, yangın, silahlı vurulma.
+- 50.0 - 89.9: Kırık, kaza, şiddetli ağrı, yüksek ateş.
+- 10.0 - 49.9: Hafif durumlar, panik.
+- 0.0 - 5.0: Tost makinesi, bozuk cihaz, geyik sohbet, troller, asılsız çağrılar.
 
-2. ACİL TIBBİ MÜDAHALE (50.000 - 89.999 Puan):
-   - Kırık şüphesi, açık yara, geçmeyen şiddetli göğüs ağrısı, ciddi düşme.
-   - ÖRNEK PUANLAR: 52.300, 68.450, 77.100, 84.900 gibi özgün sayılar ver.
-
-3. DÜŞÜK ACİLİYE T / DESTEK (10.000 - 49.999 Puan):
-   - Hafif sıyrık, panik hali, yaşlı bakımı, kapıda kalma.
-   - ÖRNEK PUANLAR: 12.400, 25.800, 39.150.
-
-4. SIFIR TOLERANS / EŞYA / TROLL / SOHBET (0 - 9.999 Puan):
-   - Tost makinesi, beyaz eşya, kedi/köpek sorunu, sohbet etme, saçmalama, "annem kızar", troller.
-   - BUNLARA KESİNLİKLE 10.000 ÜZERİ PUAN VERME! (Örn: 50, 350, 1.200, 4.500).
-
-ÖNEMLİ: Sonu hep '00' veya '000' biten düz sayılar verme! 87.340, 93.120, 1.450 gibi vakaya özel küsüratlı/çeşitli puanlar üret.
-
-Gelen İhbar Metni: "{message.content}"
+Gelen İhbar: "{message.content}"
 
 Lütfen SADECE aşağıdaki JSON formatında yanıt ver:
-{{"puan": HASSAS_SAYI, "ozet": "Kısa vaka özeti (maksimum 5 kelime)"}}
+{{"puan": YUZDE_PUANI, "ozet": "Kısa vaka özeti (maksimum 5 kelime)"}}
 """
 
     loop = asyncio.get_event_loop()
@@ -94,13 +81,16 @@ Lütfen SADECE aşağıdaki JSON formatında yanıt ver:
         ai_content = ai_content.replace('```json', '').replace('```', '').strip()
         data = json.loads(ai_content)
         
-        puan = int(data.get("puan", 0))
+        raw_puan = float(data.get("puan", 0))
+        # Otomatik Ölçekleme: 0-100 arası gelen puanı 1000 ile çarparak 100.000 skalasına çeviriyoruz.
+        final_puan = int(raw_puan * 1000)
+        
         ozet = data.get("ozet", "Özet çıkarılamadı")
         
         message_db[str(message.id)] = {
             "author": message.author.display_name,
             "content": message.content,
-            "score": puan,
+            "score": final_puan,
             "summary": ozet,
             "time": message.created_at.strftime("%H:%M")
         }
